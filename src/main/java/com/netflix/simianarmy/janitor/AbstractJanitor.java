@@ -258,48 +258,55 @@ public abstract class AbstractJanitor implements Janitor {
                     LOGGER.debug(String.format("Resource %s is already marked.", resource.getId()));
                     continue;
                 }
-                LOGGER.info(String.format("Marking resource %s of type %s with expected termination time as %s",
-                        resource.getId(), resource.getResourceType(), resource.getExpectedTerminationTime()));
-                resource.setState(CleanupState.MARKED);
-                resource.setMarkTime(now);
-                if (!leashed) {
-                    if (recorder != null) {
-                        Event evt = recorder.newEvent(Type.JANITOR, EventTypes.MARK_RESOURCE, region, resource.getId());
-                        addFieldsAndTagsToEvent(resource, evt);
-                        recorder.recordEvent(evt);
-                    }
-                    resourceTracker.addOrUpdate(resource);
-                    postMark(resource);
-                } else {
-                    LOGGER.info(String.format(
-                            "The janitor is leashed, no data change is made for marking the resource %s.",
-                            resource.getId()));
-                }
-                markedResources.add(resource);
+                markResource(now, resource);
             } else if (trackedResource != null) {
                 // The resource was marked and now the rule engine does not consider it as a cleanup candidate.
                 // So the janitor needs to unmark the resource.
-                LOGGER.info(String.format("Unmarking resource %s", resource.getId()));
-                resource.setState(CleanupState.UNMARKED);
-                if (!leashed) {
-                    if (recorder != null) {
-                        Event evt = recorder.newEvent(
-                                Type.JANITOR, EventTypes.UNMARK_RESOURCE, region, resource.getId());
-                        addFieldsAndTagsToEvent(resource, evt);
-                        recorder.recordEvent(evt);
-                    }
-                    resourceTracker.addOrUpdate(resource);
-                } else {
-                    LOGGER.info(String.format(
-                            "The janitor is leashed, no data change is made for unmarking the resource %s.",
-                            resource.getId()));
-                }
-                unmarkedResources.add(resource);
+                unmarkResource(resource);
             }
         }
 
         // Unmark the resources that are terminated by user so not returned by the crawler.
         unmarkUserTerminatedResources(crawledResources, trackedMarkedResources);
+    }
+
+    private void markResource(Date now, Resource resource) {
+        LOGGER.info(String.format("Marking resource %s of type %s with expected termination time as %s",
+                resource.getId(), resource.getResourceType(), resource.getExpectedTerminationTime()));
+        resource.setState(CleanupState.MARKED);
+        resource.setMarkTime(now);
+        if (!leashed) {
+            createAndRecordEvent(resource, EventTypes.MARK_RESOURCE, region, resource.getId());
+            postMark(resource);
+        } else {
+            LOGGER.info(String.format(
+                    "The janitor is leashed, no data change is made for marking the resource %s.",
+                    resource.getId()));
+        }
+        markedResources.add(resource);
+    }
+
+    private void unmarkResource(Resource resource) {
+        LOGGER.info(String.format("Unmarking resource %s", resource.getId()));
+        resource.setState(CleanupState.UNMARKED);
+        if (!leashed) {
+            createAndRecordEvent(resource, EventTypes.UNMARK_RESOURCE, region, resource.getId());
+        } else {
+            LOGGER.info(String.format(
+                    "The janitor is leashed, no data change is made for unmarking the resource %s.",
+                    resource.getId()));
+        }
+        unmarkedResources.add(resource);
+    }
+
+    private void createAndRecordEvent(Resource resource, EventTypes unmarkResource, String region, String id) {
+        if (recorder != null) {
+            Event evt = recorder.newEvent(
+                    Type.JANITOR, unmarkResource, region, id);
+            addFieldsAndTagsToEvent(resource, evt);
+            recorder.recordEvent(evt);
+        }
+        resourceTracker.addOrUpdate(resource);
     }
 
 

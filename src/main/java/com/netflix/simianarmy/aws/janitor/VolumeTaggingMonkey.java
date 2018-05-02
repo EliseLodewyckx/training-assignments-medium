@@ -50,11 +50,12 @@ import com.netflix.simianarmy.janitor.JanitorMonkey;
  * does not keep track of last unattached time, which makes it difficult to determine its usage.
  * To solve this, this monkey will tag all EBS volumes with last owner and instance to which they are attached
  * and the time they got detached from instance. The monkey will poll and monitor EBS volumes hourly (by default).
- *
  */
 public class VolumeTaggingMonkey extends Monkey {
 
-    /** The Constant LOGGER. */
+    /**
+     * The Constant LOGGER.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(VolumeTaggingMonkey.class);
 
     /**
@@ -81,11 +82,14 @@ public class VolumeTaggingMonkey extends Monkey {
     private final Collection<AWSClient> awsClients;
     private final MonkeyCalendar calendar;
 
-    /** We cache the global map from instance id to its owner when starting the monkey. */
+    /**
+     * We cache the global map from instance id to its owner when starting the monkey.
+     */
     private final Map<AWSClient, Map<String, String>> awsClientToInstanceToOwner;
 
     /**
      * The constructor.
+     *
      * @param ctx the context
      */
     public VolumeTaggingMonkey(Context ctx) {
@@ -111,7 +115,9 @@ public class VolumeTaggingMonkey extends Monkey {
      * The monkey Type.
      */
     public enum Type implements MonkeyType {
-        /** Volume tagging monkey. */
+        /**
+         * Volume tagging monkey.
+         */
         VOLUME_TAGGING
     }
 
@@ -119,7 +125,9 @@ public class VolumeTaggingMonkey extends Monkey {
      * The event types that this monkey causes.
      */
     public enum EventTypes implements EventType {
-        /** The event type for tagging the volume with Janitor meta data information. */
+        /**
+         * The event type for tagging the volume with Janitor meta data information.
+         */
         TAGGING_JANITOR
     }
 
@@ -194,7 +202,8 @@ public class VolumeTaggingMonkey extends Monkey {
                 owner = existingOwner;
             }
             if (needsUpdate(janitorMetadata, owner, instanceId, lastDetachTime)) {
-                Event evt = updateJanitorMetaTag(volume, instanceId, owner, lastDetachTime, awsClient);
+                InstanceInfo instanceInfo = new InstanceInfo(instanceId, owner, lastDetachTime);
+                Event evt = updateJanitorMetaTag(volume, instanceInfo, awsClient);
                 if (evt != null) {
                     context().recorder().recordEvent(evt);
                 }
@@ -223,6 +232,7 @@ public class VolumeTaggingMonkey extends Monkey {
     /**
      * Parses the Janitor meta tag set by this monkey and gets a map from key
      * to value for the tag values.
+     *
      * @param tags the tags of the volumes
      * @return the map from the Janitor meta tag key to value
      */
@@ -233,6 +243,7 @@ public class VolumeTaggingMonkey extends Monkey {
 
     /**
      * Parses the string of Janitor meta-data tag value to get a key value map.
+     *
      * @param janitorMetaTag the value of the Janitor meta-data tag
      * @return the key value map in the Janitor meta-data tag
      */
@@ -249,7 +260,8 @@ public class VolumeTaggingMonkey extends Monkey {
         return metadata;
     }
 
-    /** Gets the domain name for the owner email. The method can be overridden in subclasses.
+    /**
+     * Gets the domain name for the owner email. The method can be overridden in subclasses.
      *
      * @return the domain name for the owner email.
      */
@@ -257,9 +269,8 @@ public class VolumeTaggingMonkey extends Monkey {
         return config.getStrOrElse("simianarmy.volumeTagging.ownerEmailDomain", "");
     }
 
-    private Event updateJanitorMetaTag(Volume volume, String instance, String owner, Date lastDetachTime,
-                                       AWSClient awsClient) {
-        String meta = makeMetaTag(instance, owner, lastDetachTime);
+    private Event updateJanitorMetaTag(Volume volume, InstanceInfo instanceInfo, AWSClient awsClient) {
+        String meta = makeMetaTag(instanceInfo);
         Map<String, String> janitorTags = new HashMap<String, String>();
         janitorTags.put(JanitorMonkey.JANITOR_META_TAG, meta);
         LOGGER.info(String.format("Setting tag %s to '%s' for volume %s",
@@ -284,18 +295,20 @@ public class VolumeTaggingMonkey extends Monkey {
     /**
      * Makes the Janitor meta tag for volumes to track the last attachment/detachment information.
      * The method is intentionally made public for testing.
-     * @param instance the last attached instance
-     * @param owner the last owner
-     * @param lastDetachTime the detach time
+     *
+     * @param instanceInfo contains
+     *                     instance: the last attached instance
+     *                     owner: the last owner
+     *                     lastDetachTime: the last detach time
      * @return the meta tag of Janitor Monkey
      */
-    public static String makeMetaTag(String instance, String owner, Date lastDetachTime) {
+    public static String makeMetaTag(InstanceInfo instanceInfo) {
         StringBuilder meta = new StringBuilder();
         meta.append(String.format("%s=%s;",
-                JanitorMonkey.INSTANCE_TAG_KEY, instance == null ? "" : instance));
-        meta.append(String.format("%s=%s;", BasicSimianArmyContext.GLOBAL_OWNER_TAGKEY, owner == null ? "" : owner));
+                JanitorMonkey.INSTANCE_TAG_KEY, instanceInfo.getInstance() == null ? "" : instanceInfo.getInstance()));
+        meta.append(String.format("%s=%s;", BasicSimianArmyContext.GLOBAL_OWNER_TAGKEY, instanceInfo.getOwner() == null ? "" : instanceInfo.getOwner()));
         meta.append(String.format("%s=%s", JanitorMonkey.DETACH_TIME_TAG_KEY,
-                lastDetachTime == null ? "" : AWSResource.DATE_FORMATTER.print(lastDetachTime.getTime())));
+                instanceInfo.getLastDetachTime() == null ? "" : AWSResource.DATE_FORMATTER.print(instanceInfo.getLastDetachTime().getTime())));
         return meta.toString();
     }
 
@@ -308,15 +321,15 @@ public class VolumeTaggingMonkey extends Monkey {
         return null;
     }
 
-    /** Needs to update tags of the volume if
+    /**
+     * Needs to update tags of the volume if
      * 1) owner or instance attached changed or
      * 2) the last detached status is changed.
      */
     private static boolean needsUpdate(Map<String, String> metadata,
-            String owner, String instance, Date lastDetachTime) {
+                                       String owner, String instance, Date lastDetachTime) {
         return (owner != null && !StringUtils.equals(metadata.get(BasicSimianArmyContext.GLOBAL_OWNER_TAGKEY), owner))
                 || (instance != null && !StringUtils.equals(metadata.get(JanitorMonkey.INSTANCE_TAG_KEY), instance))
                 || lastDetachTime != null;
     }
-
 }

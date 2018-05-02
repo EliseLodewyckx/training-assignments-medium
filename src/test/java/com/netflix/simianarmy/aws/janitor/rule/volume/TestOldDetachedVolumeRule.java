@@ -24,6 +24,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.TimeZone;
 
+import com.netflix.simianarmy.aws.janitor.InstanceInfo;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.testng.Assert;
@@ -72,7 +73,7 @@ public class TestOldDetachedVolumeRule {
                 .withLaunchTime(new Date(now.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
         Date lastDetachTime = new Date(now.minusDays(ageThreshold + 1).getMillis());
-        String metaTag = VolumeTaggingMonkey.makeMetaTag(null, null, lastDetachTime);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo(null, null, lastDetachTime));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
         OldDetachedVolumeRule rule = new OldDetachedVolumeRule(new TestMonkeyCalendar(),
@@ -122,7 +123,7 @@ public class TestOldDetachedVolumeRule {
                 .withLaunchTime(new Date(now.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
         Date lastDetachTime = new Date(now.minusDays(ageThreshold + 1).getMillis());
-        String metaTag = VolumeTaggingMonkey.makeMetaTag(null, null, lastDetachTime);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo(null, null, lastDetachTime));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
         OldDetachedVolumeRule rule = new OldDetachedVolumeRule(new TestMonkeyCalendar(),
@@ -162,7 +163,7 @@ public class TestOldDetachedVolumeRule {
             .withLaunchTime(new Date(closeToSpringAheadDst.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
         Date lastDetachTime = new Date(closeToSpringAheadDst.minusDays(ageThreshold + 1).getMillis());
-        String metaTag = VolumeTaggingMonkey.makeMetaTag(null, null, lastDetachTime);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo(null, null, lastDetachTime));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
 
@@ -204,7 +205,7 @@ public class TestOldDetachedVolumeRule {
                 .withLaunchTime(new Date(now.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
         Date lastDetachTime = new Date(now.minusDays(ageThreshold - 1).getMillis());
-        String metaTag = VolumeTaggingMonkey.makeMetaTag(null, null, lastDetachTime);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo(null, null, lastDetachTime));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
         OldDetachedVolumeRule rule = new OldDetachedVolumeRule(new TestMonkeyCalendar(),
@@ -220,7 +221,7 @@ public class TestOldDetachedVolumeRule {
         Resource resource = new AWSResource().withId("vol-12345678901234567").withResourceType(AWSResourceType.EBS_VOLUME)
                 .withLaunchTime(new Date(now.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
-        String metaTag = VolumeTaggingMonkey.makeMetaTag("i-12345678901234567", "owner", null);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo("i-12345678901234567", "owner", null));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
         OldDetachedVolumeRule rule = new OldDetachedVolumeRule(new TestMonkeyCalendar(),
@@ -240,7 +241,7 @@ public class TestOldDetachedVolumeRule {
                 .withLaunchTime(new Date(now.minusDays(ageThreshold + 1).getMillis()));
         ((AWSResource) resource).setAWSResourceState("available");
         Date lastDetachTime = new Date(now.minusDays(ageThreshold + 1).getMillis());
-        String metaTag = VolumeTaggingMonkey.makeMetaTag(null, null, lastDetachTime);
+        String metaTag = VolumeTaggingMonkey.makeMetaTag(new InstanceInfo(null, null, lastDetachTime));
         resource.setTag(JanitorMonkey.JANITOR_META_TAG, metaTag);
         int retentionDays = 4;
         OldDetachedVolumeRule rule = new OldDetachedVolumeRule(new TestMonkeyCalendar(),

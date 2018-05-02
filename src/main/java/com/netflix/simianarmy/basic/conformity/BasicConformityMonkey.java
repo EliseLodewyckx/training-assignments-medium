@@ -112,70 +112,72 @@ public class BasicConformityMonkey extends ConformityMonkey {
         context().resetEventReport();
 
         if (isConformityMonkeyEnabled()) {
-            nonconformingClusters.clear();
-            conformingClusters.clear();
-            failedClusters.clear();
-            nonexistentClusters.clear();
+            process();
+        }
+    }
 
-            List<Cluster> clusters = crawler.clusters();
-            Map<String, Set<String>> existingClusterNamesByRegion = Maps.newHashMap();
-            for (String region : regions) {
-                existingClusterNamesByRegion.put(region, new HashSet<String>());
-            }
-            for (Cluster cluster : clusters) {
-                existingClusterNamesByRegion.get(cluster.getRegion()).add(cluster.getName());
-            }
-            List<Cluster> trackedClusters = clusterTracker.getAllClusters(regions.toArray(new String[regions.size()]));
-            for (Cluster trackedCluster : trackedClusters) {
-                if (!existingClusterNamesByRegion.get(trackedCluster.getRegion()).contains(trackedCluster.getName())) {
-                    addCluster(nonexistentClusters, trackedCluster);
-                }
-            }
-            for (String region : regions) {
-                Collection<Cluster> toDelete = nonexistentClusters.get(region);
-                if (toDelete != null) {
-                    clusterTracker.deleteClusters(toDelete.toArray(new Cluster[toDelete.size()]));
-                }
-            }
+    private void process() {
+        nonconformingClusters.clear();
+        conformingClusters.clear();
+        failedClusters.clear();
+        nonexistentClusters.clear();
 
-            LOGGER.info(String.format("Performing conformity check for %d crawled clusters.", clusters.size()));
-            Date now = calendar.now().getTime();
-            for (Cluster cluster : clusters) {
-                boolean conforming;
-                try {
-                    conforming = ruleEngine.check(cluster);
-                } catch (Exception e) {
-                    LOGGER.error(String.format("Failed to perform conformity check for cluster %s", cluster.getName()),
-                            e);
-                    addCluster(failedClusters, cluster);
-                    continue;
-                }
-                cluster.setUpdateTime(now);
-                cluster.setConforming(conforming);
-                if (conforming) {
-                    LOGGER.info(String.format("Cluster %s is conforming", cluster.getName()));
-                    addCluster(conformingClusters, cluster);
-                } else {
-                    LOGGER.info(String.format("Cluster %s is not conforming", cluster.getName()));
-                    addCluster(nonconformingClusters, cluster);
-                }
-                if (!leashed) {
-                    LOGGER.info(String.format("Saving cluster %s", cluster.getName()));
-                    clusterTracker.addOrUpdate(cluster);
-                } else {
-                    LOGGER.info(String.format(
-                            "The conformity monkey is leashed, no data change is made for cluster %s.",
-                            cluster.getName()));
-                }
+        List<Cluster> clusters = crawler.clusters();
+        Map<String, Set<String>> existingClusterNamesByRegion = Maps.newHashMap();
+        for (String region : regions) {
+            existingClusterNamesByRegion.put(region, new HashSet<String>());
+            Collection<Cluster> toDelete = nonexistentClusters.get(region);
+            if (toDelete != null) {
+                clusterTracker.deleteClusters(toDelete.toArray(new Cluster[toDelete.size()]));
+            }
+        }
+        for (Cluster cluster : clusters) {
+            existingClusterNamesByRegion.get(cluster.getRegion()).add(cluster.getName());
+        }
+        List<Cluster> trackedClusters = clusterTracker.getAllClusters(regions.toArray(new String[regions.size()]));
+        for (Cluster trackedCluster : trackedClusters) {
+            if (!existingClusterNamesByRegion.get(trackedCluster.getRegion()).contains(trackedCluster.getName())) {
+                addCluster(nonexistentClusters, trackedCluster);
+            }
+        }
+
+        LOGGER.info(String.format("Performing conformity check for %d crawled clusters.", clusters.size()));
+        Date now = calendar.now().getTime();
+        for (Cluster cluster : clusters) {
+            boolean conforming;
+            try {
+                conforming = ruleEngine.check(cluster);
+            } catch (Exception e) {
+                LOGGER.error(String.format("Failed to perform conformity check for cluster %s", cluster.getName()),
+                        e);
+                addCluster(failedClusters, cluster);
+                continue;
+            }
+            cluster.setUpdateTime(now);
+            cluster.setConforming(conforming);
+            if (conforming) {
+                LOGGER.info(String.format("Cluster %s is conforming", cluster.getName()));
+                addCluster(conformingClusters, cluster);
+            } else {
+                LOGGER.info(String.format("Cluster %s is not conforming", cluster.getName()));
+                addCluster(nonconformingClusters, cluster);
             }
             if (!leashed) {
-                emailNotifier.sendNotifications();
+                LOGGER.info(String.format("Saving cluster %s", cluster.getName()));
+                clusterTracker.addOrUpdate(cluster);
             } else {
-                LOGGER.info("Conformity monkey is leashed, no notification is sent.");
+                LOGGER.info(String.format(
+                        "The conformity monkey is leashed, no data change is made for cluster %s.",
+                        cluster.getName()));
             }
-            if (cfg.getBoolOrElse(NS + "summaryEmail.enabled", true)) {
-                sendConformitySummaryEmail();
-            }
+        }
+        if (!leashed) {
+            emailNotifier.sendNotifications();
+        } else {
+            LOGGER.info("Conformity monkey is leashed, no notification is sent.");
+        }
+        if (cfg.getBoolOrElse(NS + "summaryEmail.enabled", true)) {
+            sendConformitySummaryEmail();
         }
     }
 

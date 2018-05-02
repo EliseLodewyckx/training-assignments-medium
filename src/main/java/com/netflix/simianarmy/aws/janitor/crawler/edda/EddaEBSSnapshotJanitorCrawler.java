@@ -41,6 +41,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import static com.netflix.simianarmy.aws.janitor.crawler.edda.JsonNodeTagsProcessor.processJsonNodeTags;
+
 /**
  * The crawler to crawl AWS EBS snapshots for janitor monkey using Edda.
  */
@@ -152,18 +154,9 @@ public class EddaEBSSnapshotJanitorCrawler implements JanitorCrawler {
         Resource resource = new AWSResource().withId(jsonNode.get("snapshotId").getTextValue()).withRegion(region)
                 .withResourceType(AWSResourceType.EBS_SNAPSHOT)
                 .withLaunchTime(new Date(startTime));
-        JsonNode tags = jsonNode.get("tags");
 
-        if (tags == null || !tags.isArray() || tags.size() == 0) {
-            LOGGER.debug(String.format("No tags is found for %s", resource.getId()));
-        } else {
-            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext();) {
-                JsonNode tag = it.next();
-                String key = tag.get("key").getTextValue();
-                String value = tag.get("value").getTextValue();
-                resource.setTag(key, value);
-            }
-        }
+        processJsonNodeTags(jsonNode, resource);
+
         JsonNode description = jsonNode.get("description");
         if (description != null) {
             resource.setDescription(description.getTextValue());
@@ -176,7 +169,6 @@ public class EddaEBSSnapshotJanitorCrawler implements JanitorCrawler {
         resource.setOwnerEmail(getOwnerEmailForResource(resource));
         return resource;
     }
-
 
     @Override
     public String getOwnerEmailForResource(Resource resource) {

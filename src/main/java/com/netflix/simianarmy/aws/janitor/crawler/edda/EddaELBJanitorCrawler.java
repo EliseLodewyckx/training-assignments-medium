@@ -36,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 
+import static com.netflix.simianarmy.aws.janitor.crawler.edda.JsonNodeTagsProcessor.processJsonNodeTags;
+
 /**
  * The crawler to crawl AWS instances for janitor monkey using Edda.
  */
@@ -45,9 +47,13 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         String dnsName;
         String dnsType;
         String hostedZoneId;
-    };
+    }
 
-    /** The Constant LOGGER. */
+    ;
+
+    /**
+     * The Constant LOGGER.
+     */
     private static final Logger LOGGER = LoggerFactory.getLogger(EddaELBJanitorCrawler.class);
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormat.forPattern("yyyy-MM-dd'T'HH:mm:ss.S'Z'");
@@ -61,10 +67,9 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
 
     /**
      * Instantiates a new basic instance crawler.
-     * @param eddaClient
-     *            the Edda client
-     * @param regions
-     *            the regions the crawler will crawl resources for
+     *
+     * @param eddaClient the Edda client
+     * @param regions    the regions the crawler will crawl resources for
      */
     public EddaELBJanitorCrawler(EddaClient eddaClient, String fallbackOwnerEmail, boolean useEddaApplicationOwner, String... regions) {
         this.useEddaApplicationOwner = useEddaApplicationOwner;
@@ -154,16 +159,16 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
 
 
         List<Resource> resources = Lists.newArrayList();
-        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
             resources.add(parseJsonElementToELBResource(region, it.next()));
         }
 
         Map<String, List<String>> elBtoASGMap = buildELBtoASGMap(region);
-        for(Resource resource : resources) {
+        for (Resource resource : resources) {
             List<String> asgList = elBtoASGMap.get(resource.getId());
             if (asgList != null && asgList.size() > 0) {
                 resource.setAdditionalField("referencedASGCount", "" + asgList.size());
-                String asgStr = StringUtils.join(asgList,",");
+                String asgStr = StringUtils.join(asgList, ",");
                 resource.setDescription(resource.getDescription() + ", ASGS=" + asgStr);
                 LOGGER.debug(String.format("Resource ELB %s is referenced by ASGs %s", resource.getId(), asgStr));
             } else {
@@ -174,7 +179,7 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         }
 
         Map<String, List<DNSEntry>> elBtoDNSMap = buildELBtoDNSMap(region);
-        for(Resource resource : resources) {
+        for (Resource resource : resources) {
             List<DNSEntry> dnsEntryList = elBtoDNSMap.get(resource.getAdditionalField("DNSName"));
             if (dnsEntryList != null && dnsEntryList.size() > 0) {
                 ArrayList<String> dnsNames = new ArrayList<>();
@@ -186,9 +191,9 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
                     hostedZoneIds.add(dnsEntry.hostedZoneId);
                 }
 
-                resource.setAdditionalField("referencedDNS", StringUtils.join(dnsNames,","));
-                resource.setAdditionalField("referencedDNSTypes", StringUtils.join(dnsTypes,","));
-                resource.setAdditionalField("referencedDNSZones", StringUtils.join(hostedZoneIds,","));
+                resource.setAdditionalField("referencedDNS", StringUtils.join(dnsNames, ","));
+                resource.setAdditionalField("referencedDNSTypes", StringUtils.join(dnsTypes, ","));
+                resource.setAdditionalField("referencedDNSZones", StringUtils.join(hostedZoneIds, ","));
 
                 resource.setDescription(resource.getDescription() + ", DNS=" + resource.getAdditionalField("referencedDNS"));
                 LOGGER.debug(String.format("Resource ELB %s is referenced by DNS %s", resource.getId(), resource.getAdditionalField("referencedDNS")));
@@ -206,6 +211,12 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         String url = eddaClient.getBaseUrl(region) + "/aws/autoScalingGroups;_expand:(autoScalingGroupName,loadBalancerNames)";
         LOGGER.info(String.format("Getting all ELBs associated with ASGs in region %s", region));
 
+        JsonNode jsonNode = getJsonNode(region, url);
+
+        return createAsgMap(jsonNode);
+    }
+
+    private JsonNode getJsonNode(String region, String url) {
         JsonNode jsonNode = null;
         try {
             jsonNode = eddaClient.getJsonNodeFromUrl(url);
@@ -217,30 +228,39 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         if (jsonNode == null || !jsonNode.isArray()) {
             throw new RuntimeException(String.format("Failed to get valid document from %s, got: %s", url, jsonNode));
         }
+        return jsonNode;
+    }
 
+    private HashMap<String, List<String>> createAsgMap(JsonNode jsonNode) {
         HashMap<String, List<String>> asgMap = new HashMap<>();
-        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
             JsonNode asgNode = it.next();
             String asgName = asgNode.get("autoScalingGroupName").getTextValue();
             JsonNode elbs = asgNode.get("loadBalancerNames");
-            if (elbs == null || !elbs.isArray() || elbs.size() == 0) {
-                continue;
-            } else {
-                for (Iterator<JsonNode> elbNode = elbs.getElements(); elbNode.hasNext();) {
-                    JsonNode elb = elbNode.next();
-                    String elbName = elb.getTextValue();
-
-                    List<String> asgList = asgMap.get(elbName);
-                    if (asgList == null) {
-                        asgList = new ArrayList<>();
-                        asgMap.put(elbName, asgList);
-                    }
-                    asgList.add(asgName);
-                    LOGGER.debug(String.format("Found ASG %s associated with ELB %s", asgName, elbName));
-                }
+            if (!elbsNotEmptyOrNotArray(elbs)) {
+                processElbNodes(asgMap, asgName, elbs);
             }
         }
         return asgMap;
+    }
+
+    private void processElbNodes(HashMap<String, List<String>> asgMap, String asgName, JsonNode elbs) {
+        for (Iterator<JsonNode> elbNode = elbs.getElements(); elbNode.hasNext(); ) {
+            JsonNode elb = elbNode.next();
+            String elbName = elb.getTextValue();
+
+            List<String> asgList = asgMap.get(elbName);
+            if (asgList == null) {
+                asgList = new ArrayList<>();
+                asgMap.put(elbName, asgList);
+            }
+            asgList.add(asgName);
+            LOGGER.debug(String.format("Found ASG %s associated with ELB %s", asgName, elbName));
+        }
+    }
+
+    private boolean elbsNotEmptyOrNotArray(JsonNode elbs) {
+        return elbs == null || !elbs.isArray() || elbs.size() == 0;
     }
 
     private Resource parseJsonElementToELBResource(String region, JsonNode jsonNode) {
@@ -256,17 +276,7 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         String dnsName = jsonNode.get("DNSName").getTextValue();
         resource.setAdditionalField("DNSName", dnsName);
 
-        JsonNode tags = jsonNode.get("tags");
-        if (tags == null || !tags.isArray() || tags.size() == 0) {
-            LOGGER.debug(String.format("No tags is found for %s", resource.getId()));
-        } else {
-            for (Iterator<JsonNode> it = tags.getElements(); it.hasNext();) {
-                JsonNode tag = it.next();
-                String key = tag.get("key").getTextValue();
-                String value = tag.get("value").getTextValue();
-                resource.setTag(key, value);
-            }
-        }
+       processJsonNodeTags(jsonNode, resource);
 
         String owner = getOwnerEmailForResource(resource);
         if (owner != null) {
@@ -283,12 +293,12 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
             resource.setAdditionalField("instanceCount", "" + instances.size());
             ArrayList<String> instanceList = new ArrayList<String>(instances.size());
             LOGGER.debug(String.format("Found %d instances for ELB %s", instances.size(), resource.getId()));
-            for (Iterator<JsonNode> it = instances.getElements(); it.hasNext();) {
+            for (Iterator<JsonNode> it = instances.getElements(); it.hasNext(); ) {
                 JsonNode instance = it.next();
                 String instanceId = instance.get("instanceId").getTextValue();
                 instanceList.add(instanceId);
             }
-            String instancesStr = StringUtils.join(instanceList,",");
+            String instancesStr = StringUtils.join(instanceList, ",");
             resource.setDescription(String.format("instances=%s", instances));
             LOGGER.debug(String.format("Resource ELB %s has instances %s", resource.getId(), instancesStr));
         }
@@ -313,13 +323,13 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
         }
 
         HashMap<String, List<DNSEntry>> dnsMap = new HashMap<>();
-        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext();) {
+        for (Iterator<JsonNode> it = jsonNode.getElements(); it.hasNext(); ) {
             JsonNode dnsNode = it.next();
             String dnsName = dnsNode.get("name").getTextValue();
             String dnsType = dnsNode.get("type").getTextValue();
             String hostedZoneId = null;
             JsonNode hostedZoneNode = dnsNode.get("zone");
-            if (hostedZoneNode  != null) {
+            if (hostedZoneNode != null) {
                 JsonNode hostedZoneIdNode = hostedZoneNode.get("id");
                 if (hostedZoneIdNode != null) {
                     hostedZoneId = hostedZoneIdNode.getTextValue();
@@ -338,7 +348,7 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
                         dnsEntry.hostedZoneId = hostedZoneId;
 
                         if (aliasTargetDnsName.endsWith(".")) {
-                            aliasTargetDnsName = aliasTargetDnsName.substring(0, aliasTargetDnsName.length()-1);
+                            aliasTargetDnsName = aliasTargetDnsName.substring(0, aliasTargetDnsName.length() - 1);
                         }
                         List<DNSEntry> dnsEntryList = dnsMap.get(aliasTargetDnsName);
                         if (dnsEntryList == null) {
@@ -354,7 +364,7 @@ public class EddaELBJanitorCrawler implements JanitorCrawler {
             if (records == null || !records.isArray() || records.size() == 0) {
                 continue;
             } else {
-                for (Iterator<JsonNode> recordNode = records.getElements(); recordNode.hasNext();) {
+                for (Iterator<JsonNode> recordNode = records.getElements(); recordNode.hasNext(); ) {
                     JsonNode record = recordNode.next();
                     String elbDNS = record.get("value").getTextValue();
                     if (elbDNS.contains(".elb.")) {
